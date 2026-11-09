@@ -1,0 +1,13 @@
+input/**
+!input/.gitkeep
+reports/**
+!reports/.gitkeep
+output/**
+!output/.gitkeep
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+!.env.example

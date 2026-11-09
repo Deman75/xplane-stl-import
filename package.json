@@ -1,0 +1,12 @@
+{
+  "name": "xplane-stl-import",
+  "version": "0.5.5",
+  "private": true,
+  "description": "Offline browser tool for importing STL aircraft geometry into X-Plane Plane Maker 12",
+  "scripts": {
+    "test": "node --test tests/core.test.cjs tests/plane.test.cjs tests/sampling.test.cjs tests/flight.test.cjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
