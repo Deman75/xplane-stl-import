@@ -4,6 +4,8 @@
   const colors={body:'#607d92',wing:'#178e91',horizontal:'#698cc9',vertical:'#bc8950',other:'#9b83b4'};
   let inputs=[],worker=null,analysis=null,meshes=[],busy=false,job=0,pendingExport=null,appliedOptions=null;
   let draft=null,templateText=null,templateFile=null,foilFiles=new Map(),pendingResample=null;
+  const bundled=globalThis.BundledAircraftAssets||{airfoils:[],template:null};
+  const builtinFoils=new Map(bundled.airfoils.map(f=>[f.name.toLowerCase(),{file:new File([f.text],f.name),ambiguous:false}]));
   let yaw=.55,pitch=.5,zoom=1,panX=0,panY=0,drag=null;
   const number=(n,d=1)=>n.toLocaleString('ru-RU',{maximumFractionDigits:d});
   function say(text,error=false){$('status').textContent=text;$('status').className=error?'error':'';}
@@ -105,9 +107,19 @@
   }
   function invalidate(){if(analysis){analysis=null;draft=null;meshes=[];$('draftEditors').replaceChildren();$('badge').textContent='Нужно пересчитать';say('Настройки изменены. Нажмите «Пересчитать», чтобы обновить геометрию.');draw();drawSlice();}$('axesConfirmed').checked=false;updateDownloads();try{options();}catch(e){say(e.message,true);}}
   function acceptFoils(list){
-    foilFiles=new Map();for(const file of [...list].filter(f=>/\.afl$/i.test(f.name))){const key=file.name.toLowerCase(),previous=foilFiles.get(key);foilFiles.set(key,{file,ambiguous:Boolean(previous)});}
+    const selected=new Map();for(const file of [...list].filter(f=>/\.afl$/i.test(f.name))){const key=file.name.toLowerCase(),previous=selected.get(key);selected.set(key,{file,ambiguous:Boolean(previous)});}
+    foilFiles=new Map([...builtinFoils,...selected]);
     $('foilNames').replaceChildren();for(const {file}of [...foilFiles.values()].sort((a,b)=>a.file.name.localeCompare(b.file.name))){const op=document.createElement('option');op.value=file.name;$('foilNames').append(op);}
-    $('foilStatus').textContent='Найдено AFL: '+foilFiles.size+'. Выберите имена профилей ниже.';updateDownloads();
+    $('foilStatus').textContent='Доступно AFL: '+foilFiles.size+' (встроенных: '+builtinFoils.size+', выбранных: '+selected.size+'). Выберите профили из списка или начните вводить название.';updateDownloads();
+  }
+  function useBuiltinTemplate(){
+    templateText=null;templateFile=null;
+    if(bundled.template)try{
+      P.validateTemplate(bundled.template.text);templateText=bundled.template.text;
+      templateFile=new File([templateText],bundled.template.name);
+      $('templateStatus').textContent='Встроенный чистый шаблон: input/'+bundled.template.name+'. Можно выбрать другой.';
+    }catch(e){$('templateStatus').textContent=e.message;}
+    else $('templateStatus').textContent='Выберите чистый шаблон ACF отдельно.';
   }
   async function acceptTemplate(file){
     if(!file)return;try{const text=await file.text();P.validateTemplate(text);templateText=text;templateFile=file;$('templateStatus').textContent='Шаблон: '+file.name+' · ACF 1200, чистый.';}
@@ -236,8 +248,8 @@
     if(worker)worker.terminate();const token=++job;
     try{
       const o=options(),data=[];appliedOptions=o;const templates=all.filter(f=>/\.acf$/i.test(f.name)),chosen=templates.find(f=>/_template\.acf$/i.test(f.name))||(templates.length===1?templates[0]:null);
-      templateText=null;templateFile=null;if(chosen)await acceptTemplate(chosen);else $('templateStatus').textContent='Выберите чистый шаблон ACF отдельно.';
-      const foils=all.filter(f=>/\.afl$/i.test(f.name));if(foils.length)acceptFoils(foils);
+      templateText=null;templateFile=null;if(chosen)await acceptTemplate(chosen);else useBuiltinTemplate();
+      const foils=all.filter(f=>/\.afl$/i.test(f.name));acceptFoils(foils);
       for(const f of inputs)data.push({path:f.path,role:f.role,group:f.group,buffer:await f.file.arrayBuffer()});
       if(token!==job)return;worker=makeWorker();bindWorker(worker,token);worker.postMessage({kind:'load',files:data,parts:partSettings(),options:o},data.map(f=>f.buffer));
     }catch(e){if(token===job){say(e.message,true);setBusy(false);}}
@@ -375,5 +387,5 @@
     if(drag&&e.pointerId!==drag.id)return;drag=null;$('viewer').style.cursor='';
   });
   $('viewer').addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.2,Math.min(8,zoom*Math.exp(-e.deltaY*.001)));draw();},{passive:false});
-  new ResizeObserver(()=>{draw();drawSlice();}).observe($('viewer'));options();updateDownloads();draw();
+  new ResizeObserver(()=>{draw();drawSlice();}).observe($('viewer'));options();useBuiltinTemplate();acceptFoils([]);updateDownloads();draw();
 })();

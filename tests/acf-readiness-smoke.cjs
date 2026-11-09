@@ -45,7 +45,8 @@ async function until(fn,label,timeout=20000){const start=Date.now();while(Date.n
 
   const marked=async id=>evaluate(`document.getElementById('${id}').dataset.acfNeeded === 'true'`);
   assert.equal(await marked('folderInput'),true);
-  assert.equal(await marked('templateInput'),true);
+  assert.equal(await marked('templateInput'),false,'built-in template is ready');
+  assert.equal(await evaluate("document.querySelectorAll('#foilNames option').length"),34);
   assert.equal(await marked('massKg'),false,'optional physical export is not required');
   const fixture=path.join(output,'ReadinessFixture');fs.mkdirSync(fixture);
   const source=fs.readFileSync(path.join(project,'tests','core.test.cjs'),'utf8');
@@ -53,24 +54,31 @@ async function until(fn,label,timeout=20000){const start=Date.now();while(Date.n
   function stl(triangles){return 'solid fixture\n'+triangles.map(t=>'facet normal 0 0 0\nouter loop\n'+t.map(p=>'vertex '+p.join(' ')).join('\n')+'\nendloop\nendfacet').join('\n')+'\nendsolid fixture\n';}
   fs.writeFileSync(path.join(fixture,'Fuselage.stl'),stl(cube(-50,50,-50,50,-500,500)));
   fs.writeFileSync(path.join(fixture,'Wing.stl'),stl(cube(-600,600,-10,10,-100,100)));
-  fs.writeFileSync(path.join(fixture,'Fixture_template.acf'),'I\n1200 Version\nACF\nPROPERTIES_BEGIN\nP _body/0/_geo_xyz/i_count 20\nP acf/_m_empty 0\nP acf/_num_engn 0\nPROPERTIES_END\n');
   const {root}=await page('DOM.getDocument');
   const setFiles=async(selector,files)=>{const {nodeId}=await page('DOM.querySelector',{nodeId:root.nodeId,selector});await page('DOM.setFileInputFiles',{nodeId,files});};
   await setFiles('#folderInput',[fixture]);
   await until(()=>evaluate("!document.getElementById('analyze').disabled && document.getElementById('triangles').textContent.includes('24')"),'fixture analysed');
   assert.equal(await marked('folderInput'),false);
   assert.equal(await marked('axesConfirmed'),true);
-  assert.equal(await marked('templateInput'),false,'template picked up automatically');
-  assert.equal(await marked('foilFolderInput'),true);
+  assert.equal(await marked('templateInput'),false,'built-in template survives loading a folder with only STL');
+  assert.equal(await marked('foilFolderInput'),false,'built-in AFLs are ready');
   assert.equal(await marked('wingRoot'),true);
   assert.equal(await marked('wingTip'),false,'empty tip inherits root');
   assert.equal(await marked('horizontalFoil'),false,'no horizontal tail in fixture');
-  await setFiles('#foilFolderInput',[path.join(process.env.XPLANE_ROOT||path.join(project,'input','XPlane'),'Airfoils')]);
   await evaluate("{const e=document.getElementById('wingRoot');e.value='NACA 2412 (popular).afl';e.dispatchEvent(new Event('input'));document.getElementById('axesConfirmed').click();}");
   assert.equal(await marked('wingRoot'),false);
   assert.equal(await marked('axesConfirmed'),false);
   assert.equal(await evaluate("document.getElementById('downloadAcfZip').disabled"),false,await evaluate("document.getElementById('acfStatus').textContent"));
   assert.equal(await evaluate("document.getElementById('downloadAcfZip').classList.contains('acf-ready')"),true);
+  await evaluate("{const make=OfflineZip.makeZip;OfflineZip.makeZip=entries=>{globalThis.exportEntries=entries.map(e=>({name:e.name,text:new TextDecoder().decode(e.data)}));return make(entries);};document.getElementById('downloadAcfZip').click();}");
+  await until(()=>evaluate("Boolean(globalThis.exportEntries) && !document.getElementById('analyze').disabled"),'ACF with built-in assets exported');
+  const exported=await evaluate('exportEntries');
+  const afl=exported.find(e=>e.name.endsWith('/Airfoils/NACA 2412 (popular).afl'));
+  assert.ok(afl,'selected AFL bytes included in ZIP');
+  assert.equal(afl.text,fs.readFileSync(path.join(project,'Airfoils/NACA 2412 (popular).afl'),'utf8'));
+  const exportReport=JSON.parse(exported.find(e=>e.name.endsWith('/import-report.json')).text);
+  assert.equal(exportReport.templateFile,'PlaneMaker12_template.acf');
+  assert.ok(exported.some(e=>e.name.endsWith('_import.acf')));
   await evaluate("document.getElementById('flightEnabled').click()");
   for(const id of ['massKg','vneKmh','motorPower','propRpm','batteryWh','batteryV'])assert.equal(await marked(id),true,id);
   assert.equal(await marked('cgPercent'),false,'valid defaults need no changes');

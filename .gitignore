@@ -1,5 +1,6 @@
 input/**
 !input/.gitkeep
+!input/PlaneMaker12_template.acf
 reports/**
 !reports/.gitkeep
 output/**
