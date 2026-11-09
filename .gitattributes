@@ -5,3 +5,5 @@
 *.css text eol=lf
 *.md text eol=lf
 *.json text eol=lf
+*.afl text eol=lf
+*.acf text eol=lf
